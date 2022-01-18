@@ -1,0 +1,275 @@
+###########################################################
+#Brought to you by FuckTimIncorporated and The Robot Devil.
+###########################################################
+#Define Variables
+$PrintersToPrintTo= "Microsoft PCL6 Class Driver"
+$SitesToPullFrom= @(
+
+'https://cdn.ebaumsworld.com/2020/12/04/024559/86479366/Back-to-work-memes-to-put-that-funny-back-in-your-life-youtuber.jpg',
+'https://i.pinimg.com/originals/4f/0e/8a/4f0e8a70f910fe410409397e25841551.jpg',
+'https://i.redd.it/f4xjbw93r4131.png',
+'https://i.pinimg.com/originals/95/15/de/9515de80dc97cb1627cc5886c0076427.jpg',
+'https://i.pinimg.com/originals/d1/f4/cf/d1f4cf0a384fccfc74b25b63d43ed6bb.png'
+)
+$ImageNameAndPath= Join-Path -path C:\Temp * -Resolve
+
+###############################################################################################################
+
+#Function that rolls a 20 sided die (D20) with the following results:
+#1-9: Sript will NOT execute
+#10-19: Script will run once and pull down all images and send to all printers listed in $PintersToPrintTo
+#20: Another die is autonatically rolled, the resulting number will cause each image to print to all printers listed in $PintersToPrintTo that many times
+function Get-FunDieRollD20 
+{
+
+$RandomizerD20= Get-Random -Minimum 1 -Maximum 21 
+
+if(($RandomizerD20 -In 1..9)){
+(Write-Host $RandomizerD20 -ForegroundColor Red), (Write-Host "Script will NOT execute")
+}
+if(($RandomizerD20 -In 10..19)){
+(Write-Host $RandomizerD20 -ForegroundColor Yellow), (Send-OneExecution) #(Remove-ContentsOfTemp)
+}
+if(($RandomizerD20 -Eq 20)){
+(Write-Host $RandomizerD20 -ForegroundColor Green), (RobotDevilLaughLoop), (RobotDevilSayings), (Get-BonusRoll) #(Send-BonusResultsToPrinter) #(Remove-ContentsOfTemp)
+}
+
+}
+
+
+#####################################################################################################################
+#Function that works in tandem with Roll-D20 that determines another die roll if the first die roll was a 20
+function Get-BonusRoll {
+ $BonusRoll= Get-Random -Minimum 1 -Maximum 21
+ 
+ $x=0
+ do
+ 
+ {
+ Write-Host "Some crazy chaotic function will execute"
+ }until ($x++ -eq $BonusRoll)
+ }
+
+
+#####################################################################################################################
+#Downloads the image files and saves as .png file.
+function Get-Memes {
+
+#Creates a temp folder on C:/
+New-Item -Path C:/Temp -Type Directory -ErrorAction:SilentlyContinue
+
+foreach ($Site in $SitesToPullFrom)
+{ 
+$destination = 'C:\Temp'
+$filename = [System.Net.WebRequest]::Create($Site).GetResponse()
+$basename = Split-Path($filename.ResponseUri.OriginalString) -leaf
+$filename.Close()
+$output = Join-Path $destination $basename
+Invoke-WebRequest -Uri $Site -OutFile $output.ToString()
+}
+Start-Sleep -Seconds 3
+}
+
+
+#####################################################################################################################
+#Function that defines the Print-Image cmdlet- Allows prinitng of an image file
+function Print-Image {
+ param([string]$imageName = $(throw "Enter image name to print"),
+    [string]$printer = "",
+    [bool]$fitImageToPaper = $true)
+
+ trap { break; }
+
+ [void][System.Reflection.Assembly]::LoadWithPartialName("System.Drawing")
+
+ # Bitmap image to use to print image
+ $bitmap = $null
+
+ $doc = new-object System.Drawing.Printing.PrintDocument
+ # if printer name not given, use default printer
+ if ($printer -ne "") {
+  $doc.PrinterSettings.PrinterName = $printer
+ }
+ 
+ $doc.DocumentName = [System.IO.Path]::GetFileName($imageName)
+
+ $doc.add_BeginPrint({
+  Write-Host "==================== $($doc.DocumentName) ===================="
+ })
+ 
+ # clean up after printing...
+ $doc.add_EndPrint({
+  if ($bitmap -ne $null) {
+   $bitmap.Dispose()
+   $bitmap = $null
+  }
+  Write-Host "xxxxxxxxxxxxxxxxxxxx $($doc.DocumentName) xxxxxxxxxxxxxxxxxxxx"
+ })
+ 
+ # Adjust image size to fit into paper and print image
+ $doc.add_PrintPage({
+  Write-Host "Printing $imageName..."
+ 
+  $g = $_.Graphics
+  $pageBounds = $_.MarginBounds
+  $img = new-object Drawing.Bitmap($imageName)
+  
+  $adjustedImageSize = $img.Size
+  $ratio = [double] 1;
+  
+  # Adjust image size to fit on the paper
+  if ($fitImageToPaper) {
+   $fitWidth = [bool] ($img.Size.Width > $img.Size.Height)
+   if (($img.Size.Width -le $_.MarginBounds.Width) -and
+    ($img.Size.Height -le $_.MarginBounds.Height)) {
+    $adjustedImageSize = new-object System.Drawing.SizeF($img.Size.Width, $img.Size.Height)
+   } else {
+    if ($fitWidth) {
+     $ratio = [double] ($_.MarginBounds.Width / $img.Size.Width);
+    } else {
+     $ratio = [double] ($_.MarginBounds.Height / $img.Size.Height)
+    }
+    
+    $adjustedImageSize = new-object System.Drawing.SizeF($_.MarginBounds.Width, [float]($img.Size.Height * $ratio))
+   }
+  }
+
+  # calculate destination and source sizes
+  $recDest = new-object Drawing.RectangleF($pageBounds.Location, $adjustedImageSize)
+  $recSrc = new-object Drawing.RectangleF(0, 0, $img.Width, $img.Height)
+  
+  # Print to the paper
+  $_.Graphics.DrawImage($img, $recDest, $recSrc, [Drawing.GraphicsUnit]"Pixel")
+  
+  $_.HasMorePages = $false; # nothing else to print
+ })
+
+ $doc.Print()
+}
+
+
+#####################################################################################################################
+#Function that sends all images in C:\Temp to all printers listed in $PrintersToPrintTo
+function Send-OneExecution { Write-host "Some crazy chaotic function will execute" }
+
+#####################################################################################################################
+#Remove Contents from C:/TEMP
+function Remove-ContentsOfTemp {
+Start-Sleep 3
+Remove-Item -Path C:/Temp/*
+}
+#############################################End of Core Functionality###############################################
+
+
+
+####################################################Extras###########################################################
+#Creates a scheduled task to run at 1pm local time, then repeats every 3 hours for 30 days.  If you want this feature copy the .ps1 to C:/ or alternate location.  Execution Policy may need to be changed to run the script successfully.  This is not built into Get-DieRollD20 script.  Implement at your own will.
+function Add-D20TaskSchedule {
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' ` -Argument '-File C:\Get-DieRollD20.ps1'
+$trigger = New-ScheduledTaskTrigger -Daily -At 1pm
+$task = Register-ScheduledTask -TaskName "PowerShellD20" -Trigger $trigger -Action $action
+$task.Triggers.Repetition.Duration = "P30D" #//Repeat for a duration of one day
+$task.Triggers.Repetition.Interval = "PT3H" #//Repeat every 30 minutes, use PT1H for every hour
+$task | Set-ScheduledTask
+}
+#####################################################################################################################
+$UpperJaw="
+#...........................................................................
+#...........................................................................
+#...................................................... ................... 
+#.............',;;;;;;;;;;;;;;;;;;;;;;,,,,,,,,,,,,.......'''''............'.
+#d;.......',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,'..',,;;;;;;;;;,........;c'.
+#O0xc...,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,'..,;;;;;;;;;;;;;;.....':dk:..
+#;dd;',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;'..,;;;;;;;,',,''''...,cdO0kc..'
+#...',,,,,,,,,,,,,,,,,,,,,,,,,,,;;;;;;;;;;;'.';,,;;;;,',okkxolodxkO00xc,.',,
+#.......             ..'..... .... ........  ....,;;;''o0000000000Od:'',;;;;
+#.......             .,;'.''               .  ...,;;;''x000000Oxl:,'';;;;;;;
+#........';;'..      ';,..;'     ..,:clodl'.....,;;;;,';odol:;,...,;;;;;;;;;
+#...... 'kXKK0kxc.  .,;'.';..':oxO0KKKKKXo.  ..';;;;;;,''''. ....',;;;;;;;;;
+#...... .oKKKKKX0l..';;..'.:x0XKKKKKKKKKK0d,...,;;;;;;;;;;'.....',,;;;;;;;;:
+#....... .dKKKKKKKo.,;,..,.c0XKKKKKKKKKKKXx,..,;;;;;;;;;;'.....',:::;;;;;;::
+#'''..... .:lxO00O:.,;'.';,.'cdk0O00OOO00k:..';;;;;;;,,;,.....',;cc:;;;;;:::
+#,,'.........',;;,..;;'.';;'...,;;;;;;;;;,'..,;;;,........,'..,;:cc:;;;;;::c
+#;,........';;;;;,..;;'.';,..,;;;;;;;;;;;;..,;;;'.....''..;,'',;::::;;;;::cc
+#;'.........,;;;;,..,,.....',;;;;;;;;;;;;'.';;;,....;;;;'.,:,,;;;::::;;:::cc
+#,...........;;;;,'......,;;;;;;;;;;;;;;,..,;;;'...,;;;;'.;:;;;;;:::::::::cc
+#;...........';;;;;;;;;;;;;;;;;;;;;;;;;;..,,,'....';;;;,.'cc::::;:::c:::::cc
+#:,'.....'''...''''..'''''..''''.'''''....,..';...,;;;;...:ccc::;::cccc::ccc
+#c:;,''',,,'.. 'dd'...ckc...,xd, .ox:.....,''.....;;;;,. ..;ccc::::clccc:ccc
+#lcc:;;;;,'.....,,....';'.'..::...:c'';;;..''....';;;;......:lcc::ccllcc::cc
+#llcc::;,'.................  ..'''...''''.......';;;;,.......:ccc:clllcc::cc
+#lllcc:;,'.............     ............ ....',;;;;,'.........;::ccllllccccc
+#llllcc:,'.........'......'''''''''''''...,;;;;,'.........''.....',,;;,,,,,,
+#llllcc:,'.......',,,..,;;;;;;;;;;;;;,'..,;,''.... .........................
+#lllccc:,'......',,;;;'.';;;;;;;;;;;,...''....',,'.....''''....,,,,,,,,,,,,,
+#cccccc::;;,;;;;;;:::cc,.',;;;;;;;;'......',,,,,,,.............',,,,,,,,,,,,
+#lllcccccccclllcccccclcc,..,;;;;;;'..',,,,,,,,,,,,'...........',,,,,,,,,,,,,
+#llllccccccllllcclllllll;. .,;;;;'..,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+#lllccclllllcccccllllcc:. ...';;'.',,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+#:::::::::::::::::::::;'  .'..,'...'''''''''''''''''''''''''''''''''''''''."
+
+
+$LowerJaw= "
+#...........................................................................
+#...........................................................................
+#...................................................... ................... 
+#.............',;;;;;;;;;;;;;;;;;;;;;;,,,,,,,,,,,,.......'''''............'.
+#d;.......',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,'..',,;;;;;;;;;,........;c'.
+#O0xc...,;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;,'..,;;;;;;;;;;;;;;.....':dc:..
+#;dd;',;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;'..,;;;;;;;,',,''''...,cdO0cc..'
+#...',,,,,,,,,,,,,,,,,,,,,,,,,,,;;;;;;;;;;;'.';,,;;;;,',oooxolodddO00xc,.',,
+#.......             ..'..... .... ........  ....,;;;''o0000000000Od:'',;;;;
+#.......             .,;'.''               .  ...,;;;''x000000Oxl:,'';;;;;;;
+#........';;'..      ';,..;'     ..,:clool'.....,;;;;,';odol:;,...,;;;;;;;;;
+#...... 'o000000c.  .,;'.';..':oxO0KKKKKXo.  ..';;;;;;,''''. ....',;;;;;;;;;
+#...... .oKKKKKX0l..';;..'.:x0XKKKKKKKKKK0d,...,;;;;;;;;;;'.....',,;;;;;;;;:
+#....... .dKKKKKKKo.,;,..,.c0XKKKKKKKKKKKXx,..,;;;;;;;;;;'.....',:::;;;;;;::
+#'''..... .:lxO00O:.,;'.';,.'cd00O000O000:..';;;;;;;,,;,.....',;cc:;;;;;:::
+#,,'.........',;;,..;;'.';;'...,;;;;;;;;;,'..,;;;,........,'..,;:cc:;;;;;::c
+#;,........';;;;;,..;;'.';,..,;;;;;;;;;;;;..,;;;'.....''..;,'',;::::;;;;::cc
+#;'.........,;;;;,..,,.....',;;;;;;;;;;;;'.';;;,....;;;;'.,:,,;;;::::;;:::cc
+#,...........;;;;,'......,;;;;;;;;;;;;;;,..,;;;'...,;;;;'.;:;;;;;:::::::::cc
+#;...........';;;;;;;;;;;;;;;;;;;;;;;;;;..,,,'....';;;;,.'cc::::;:::c:::::cc
+#:,'.....'''...''''..'''''..''''.'''''....,..';...,;;;;...:ccc::;::cccc::ccc
+#c:;,''',,,'.. 'dd'...ccc...,xd, .ox:.....,''.....;;;;,. ..;ccc::::clccc:ccc
+#lcc:;;;;,'.....,,....';'.'..::...:c'';;;..''....';;;;......:lcc::ccllcc::cc
+#llllcc:,'.......',,,..,;;;;;;;;;;;;;,'..,;,''.... .........................
+#lllccc:,'......',,;;;'.';;;;;;;;;;;,...''....',,'.....''''....,,,,,,,,,,,,,
+#cccccc::;;,;;;;;;:::cc,.',;;;;;;;;'......',,,,,,,.............',,,,,,,,,,,,
+#lllcccccccclllcccccclcc,..,;;;;;;'..',,,,,,,,,,,,'...........',,,,,,,,,,,,,
+#llllccccccllllcclllllll;. .,;;;;'..,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+#lllccclllllcccccllllcc:. ...';;'.',,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+#:::::::::::::::::::::;'  .'..,'...'''''''''''''''''''''''''''''''''''''''."
+
+
+$RobotDevilSpeech= 
+"WELCOME TO ROBOT HELL, HERE, ROLL A DIE!",
+"WELCOME TO ROBOT HELL, WE KNOW ALL YOUR SINS AND FOR EACH ONE WE'VE PREPARED AN AGONIZING AND IRONIC PUNISHMENT", 
+"WELCOME TO ROBOT HELL, LETS LET LADY LUCK DECIDE WHAT TYPE OF TORTURE IS JUSTIFIED", 
+"WELCOME TO ROBOT HELL, IF YOU CAN BEST ME IN A FIDDLE CONTEST...I SUPPOSE I CAN LET YOU LIVE", 
+"WELCOME TO ROBOT HELL, YOU ROLLED A 20, WHAT AN APPALLINGLY IRONIC OUTCOME..", 
+"WELCOME TO ROBOT HELL, YOU KNOW HELL USED TO BE A NICE PLACE BEFORE YOU GOT HERE", 
+"WELCOME TO ROBOT HELL, GUESS THE NUMBER IM THINKING...IF YOU WIN ILL GIVE YOU A GOLDEN FIDDLE", 
+"WELCOME TO ROBOT HELL, WANT TO TRADE YOUR MEATSUIT FOR A ROBOT BODY? JUST SIGN HERE...WARRANTY EXPIRES AS SOON AS YOU SIGN ON THE DOTTED LINE"
+
+
+function RobotDevilLaugh {
+Write-Host $UpperJaw -ForegroundColor Red
+Start-Sleep -Milliseconds 900
+cls
+Write-Host $LowerJaw -ForegroundColor Red
+}
+
+function RobotDevilLaughLoop {
+$y=0
+do
+{
+RobotDevilLaugh
+$y++
+ }until($y -eq 3)
+ }
+
+function RobotDevilSayings {
+ Get-Random -InputObject $RobotDevilSpeech -Count 1 | Write-Host -ForegroundColor Yellow
+ }
+
